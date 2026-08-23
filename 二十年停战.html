@@ -4637,6 +4637,11 @@ function _oneUnit(spec) {
 function parseReplayText(raw) {
   const lines = String(raw).split(/\r?\n/);
   _st = {}; _pl = {}; _atkPending = null; _lastWinner = null; _pending = null; // 战斗结果暂存（损失行/旧文件兜底） // 最后胜利者（顺势占领时进驻目标）
+  // 读史解析：先把全部陆地省份作为中立地块纳入状态，确保中立之间边界按浅色绘制
+  for (const _p0 of DATA) {
+    if (!_p0.is_land) continue;
+    _st[_p0.id] = { owner: null, building: "", units: [], i: 0, c: 0, m: 0, a: 0, t: 0 };
+  }
   const frames = [];
   let turn = 1, phase = "build", evBuf = [], pendingSummary = false; // 同回合连续概况合并成一帧
   // （displayName 反查 revName 已删：进化王朝名为九州残留，2026-08-20 廿九确认）
@@ -4804,9 +4809,19 @@ function parseReplayText(raw) {
     // 迁都：维护首都记录（首都加粗用）
     m = line.match(/^(.+?) 迁都至 ([^，]+)$/);
     if (m) { var _fc = m[1]; _replayCaps[_fc] = m[2]; pushFrame(); continue; }
-    // 灭亡（capital 模式："X 首都被占，灭亡了！" 也解析）
+    // 灭亡（capital 模式："X 首都被占，灭亡了！" 也解析）：该势力所有无城市地块/军队转为中立
     m = line.match(/^(.+?) 灭亡了！$/) || line.match(/^(.+?) 首都被占，灭亡了！$/);
-    if (m) { var _fn = m[1]; if (_pl[_fn]) _pl[_fn].e = true; pushFrame(); continue; }
+    if (m) {
+      var _fn = m[1];
+      if (_pl[_fn]) _pl[_fn].e = true;
+      for (var _dp2 in _st) {
+        if (_st[_dp2] && _st[_dp2].owner === _fn) {
+          _st[_dp2].owner = null;
+          _st[_dp2].units = [];
+        }
+      }
+      pushFrame(); continue;
+    }
     // 其他行（文件头/迁都/开战/条约等）：仅记录文本，不产生状态帧
   }
   if (pendingSummary) { pushFrame(); pendingSummary = false; } // 收尾：最后一组概况
