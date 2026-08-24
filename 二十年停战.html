@@ -5388,7 +5388,9 @@ function openAirStrikeModal(sourcePid, targetPid, targetUid, sourceUid) {
       return;
     }
   let cost = 3;
-  if (srcSt.units && srcSt.units.some(function(u) { return u.name === "航母"; })) cost = 2;
+  // 空袭费用：航母主动攻击（sourceUid 存在）= 2 军火/次；机场空袭 = 3 军火/次
+  // 修复：原逻辑仅判断源地块有无航母就降费，导致同时有机场+航母的地块机场空袭也被错误按 2 军火收费
+  if (sourceUid) cost = 2;
   airStrikeCtx = { sourcePid: sourcePid, targetPid: targetPid, targetUid: targetUid || null, sourceUid: sourceUid || null, count: 1, cost: cost };
   document.getElementById("battle-title").textContent = "空袭 " + tgt.name;
   updateAirModal();
@@ -5490,7 +5492,9 @@ function executeAirStrikes(sourcePid, targetPid, count, targetUid, noDice) {
     addRel(srcSt.owner, dst.owner, -3); enemyFriendsBoost(srcSt.owner, dst.owner, 1); // 空袭 -3 + 敌人的敌人 +1（2026-08-21 廿九：原 +3）
   }
   let cost = 3;
-  if (srcSt.units && srcSt.units.some(function(u) { return u.name === "航母"; })) cost = 2;
+  // 空袭费用：航母主动攻击（sourceUid 存在）= 2 军火/次；机场空袭 = 3 军火/次
+  // 修复：原逻辑仅判断源地块有无航母就降费，导致同时有机场+航母的地块机场空袭也被错误按 2 军火收费
+  if (sourceUid) cost = 2;
   const aa = (tgt.airport > 0) || (dst.units || []).some(function(u) { return u.name === "航母" || hasKeyword(u, "防空"); }); // 防空：地块机场/航母/带「防空」词条单位（防空炮）
   let done = 0;
   while (done < count && dst.units && dst.units.length > 0 && ps.mun >= cost) {
