@@ -3009,10 +3009,10 @@ function nextTurn() {
         if (!s2 || s2.owner !== f2) continue;
         cap2 += (p2.civ || 0); mun2 += (p2.mil || 0);
       }
+      // 美国 debuff「大萧条」：产能 -50%（觉醒前）——只砍本回合产出，不动已有储蓄（2026-08-24 修复：原对整个国库取半，凭空蒸发历史产能）
+      if (f2 === "美利坚" && hasDebuff("美利坚")) cap2 = Math.floor(cap2 / 2);
       ps2.cap = (ps2.cap || 0) + cap2;
       ps2.mun = (ps2.mun || 0) + mun2;
-      // 美国 debuff「大萧条」：产能 -50%（觉醒前）
-      if (f2 === "美利坚" && hasDebuff("美利坚")) ps2.cap = Math.floor(ps2.cap / 2);
       // 苏联 debuff「大清洗」：每回合产能 +3、军火 +3（2026-08-21 廿九：防止苏联前期太弱）
       if (f2 === "苏维埃" && hasDebuff("苏维埃")) { ps2.cap += 3; ps2.mun += 3; }
       // 资源上限：产能/军火各 4000（2026-08-21 廿九）
@@ -5335,21 +5335,6 @@ function drawAirMask() {
   if (!airStrikeState) return;
   octx.clearRect(0, 0, W, H);
   for (const p of DATA) {
-    if (!p.is_land) continue;
-    if (!airStrikeState.targets.has(p.id)) {
-      octx.fillStyle = "rgba(0,0,0,0.55)";
-      for (const row of p.runs) for (const seg of row.runs) octx.fillRect(seg[0], row.y, seg[1]-seg[0]+1, 1);
-    }
-  }
-  for (const id of airStrikeState.targets) {
-    const p = provinceById[id];
-    if (p) strokeProv(octx, p, "rgba(255,100,100,0.95)");
-  }
-}
-function drawAirMask() {
-  if (!airStrikeState) return;
-  octx.clearRect(0, 0, W, H);
-  for (const p of DATA) {
     if (!p.is_land && p.terrain !== "海洋") continue;
     if (!airStrikeState.targets.has(p.id)) {
       octx.fillStyle = "rgba(0,0,0,0.55)";
@@ -5525,7 +5510,8 @@ function executeAirStrikes(sourcePid, targetPid, count, targetUid, noDice) {
     let atk = d1;
     if (aa) atk -= 1;
     if (srcSt.owner === "意大利" && hasBuff("意大利")) atk += 1; // 意大利 buff「皇家空军」：空袭战力+1
-    const defTotal = d2 + unitPower(def.kind, def.name);
+    let defTotal = d2 + unitPower(def.kind, def.name);
+    if (!dst.owner) defTotal -= 1; // 中立军队战力 -1（规则书九章：无主地块驻军战力 -1，空袭同样适用）
     const atkTotal = Math.max(1, Math.min(10, atk));
     const defTotalC = Math.max(1, Math.min(10, defTotal));
       if (!noDice) { // 联合行动（executeJointAttack 航母参战）不弹骰子——骰子只有单兵战斗/单点空袭才弹（2026-08-21 廿九）
@@ -8916,13 +8902,6 @@ function fmtMods(list) {
   for (const x of list) s += "　" + x.t + fmtN(x.v); // 统一无空格
   return s;
 }
-// 战斗修正全量计算（弹窗与结算共用）
-function fmtN(n) { return n >= 0 ? "+" + n : "" + n; }
-function fmtMods(list) {
-  let s = "";
-  for (const x of list) s += "　" + x.t + fmtN(x.v); // 统一无空格
-  return s;
-}
 // 地理惩罚独立显示（兵种修正之外）：地形-2 弹幕抵消+1 / 跨河-1
 function geoText(R) {
   let s = "";
@@ -9001,8 +8980,6 @@ function calcBattleMods(atkUnit, defUnit, src, dst, tgt, atkProv) {
   if (enclaveOn && dst.owner && isEnclave(tgt.id, dst.owner)) R.def.list.push({ t: "飞地", v: -1 });
   // （天子守国门明首都 +1、武备废弛 -1 已删：九州残留，2026-08-20 廿九确认）
   // （船运词条已删：楼船为九州兵种，2026-08-20 廿九确认）
-  R.atk.river = { orig: rOrig, final: rFinal, cancel: rCancel };
-    R.atk.river.name = rIsSea ? "海峡" : "跨河";
     // 无海战模式：港口跨海攻击（本地块有港口 → 同海域沿海陆地）吃登陆惩罚（2026-08-21 廿九）
     let crossSeaAtk = false;
     if (centralPlains && atkProv.port > 0 && tgt.is_land && typeof SEA_COAST !== "undefined") {
@@ -10284,7 +10261,7 @@ function showMap(){
   applyOwnerColors();
 }
 
-const C={"大不列颠":{"quote":"占位符","keywords":["占位符"],"icon":"🍵","capital":"大伦敦区","trait":"占位符","props":["占位符"],"unit":{"name":"伞兵","type":"步兵","cost":"3","req":"需基建 2 级","power":"+0","props":["「空降」：所在地块有机场时，调动与攻击范围等同于机场射程，主动攻击视作空袭伤害"]}},"法兰西":{"quote":"占位符","keywords":["占位符"],"icon":"🗼","capital":"法兰西岛","trait":"占位符","props":["占位符"],"unit":{"name":"防线","type":"特殊","cost":"5","req":"需基建 2 级","power":"+0","props":["「要塞」：与敌方火炮交战时敌方战力 +1，无法主动攻击，保护其他单位"]}},"德意志":{"quote":"占位符","keywords":["占位符"],"icon":"🦅","capital":"勃兰登堡","trait":"占位符","props":["占位符"],"unit":{"name":"防空炮","type":"火炮","cost":"8","req":"需基建 3 级","power":"+1","props":["「防空」：受到的空袭伤害 -1","「穿甲」：对坦克战力 +1"]}},"意大利":{"quote":"占位符","keywords":["占位符"],"icon":"🏔️","capital":"拉齐奥","trait":"占位符","props":["占位符"],"unit":{"name":"山地师","type":"步兵","cost":"3","req":"需基建 2 级","power":"+0","props":["「山地」：无视丘陵和山地惩罚，且战力 +1"]}},"美利坚":{"quote":"占位符","keywords":["占位符"],"icon":"🗽","capital":"诺曼底","trait":"占位符","props":["占位符"],"unit":{"name":"海军陆战队","type":"步兵","cost":"3","req":"需基建 2 级","power":"+0","props":["「两栖」：无视海峡和登陆惩罚，且战力 +1，无法获得「运输」"]}},"苏维埃":{"quote":"占位符","keywords":["占位符"],"icon":"🚩","capital":"莫斯科","trait":"占位符","props":["占位符"],"unit":{"name":"火箭炮","type":"火炮","cost":"8","req":"需基建 3 级","power":"+1","props":["「溅射」：一回合一次，若战斗胜利，与随机一个敌军同地块单位交战，若失败亦不会死亡"]}},"芬兰":{"quote":"占位符","keywords":["占位符"],"icon":"⛄","capital":"新地","trait":"占位符","props":["占位符"],"unit":{"name":"狙击手","type":"步兵","cost":"3","req":"需基建 2 级","power":"+0","props":["「狙击」：对步兵战力 +1"]}},"波兰":{"quote":"占位符","keywords":["占位符"],"icon":"🐴","capital":"华沙","trait":"占位符","props":["占位符"],"unit":{"name":"骑兵","type":"步兵","cost":"3","req":"需基建 2 级","power":"+0","props":["「机动」：可调动 2 次"]}}};
+const C={"大不列颠":{"quote":"占位符","keywords":["占位符"],"icon":"🍵","capital":"大伦敦区","trait":"占位符","props":["占位符"],"unit":{"name":"伞兵","type":"步兵","cost":"3","req":"需基建 2 级","power":"+0","props":["「空降」：所在地块有机场时，调动与攻击范围等同于机场射程，主动攻击视作空袭伤害"]}},"法兰西":{"quote":"占位符","keywords":["占位符"],"icon":"🗼","capital":"法兰西岛","trait":"占位符","props":["占位符"],"unit":{"name":"防线","type":"特殊","cost":"5","req":"需基建 2 级","power":"+0","props":["「要塞」：与敌方火炮交战时敌方战力 +1，无法主动攻击，保护其他单位"]}},"德意志":{"quote":"占位符","keywords":["占位符"],"icon":"🦅","capital":"勃兰登堡","trait":"占位符","props":["占位符"],"unit":{"name":"防空炮","type":"火炮","cost":"8","req":"需基建 3 级","power":"+1","props":["「防空」：受到的空袭伤害 -1","「穿甲」：对坦克战力 +1","「远射」：受其他没有「远射」的陆军单位保护","「弹幕」：无视 1 点地形总惩罚"]}},"意大利":{"quote":"占位符","keywords":["占位符"],"icon":"🏔️","capital":"拉齐奥","trait":"占位符","props":["占位符"],"unit":{"name":"山地师","type":"步兵","cost":"3","req":"需基建 2 级","power":"+0","props":["「山地」：无视丘陵和山地惩罚，且战力 +1"]}},"美利坚":{"quote":"占位符","keywords":["占位符"],"icon":"🗽","capital":"诺曼底","trait":"占位符","props":["占位符"],"unit":{"name":"海军陆战队","type":"步兵","cost":"3","req":"需基建 2 级","power":"+0","props":["「两栖」：无视海峡和登陆惩罚，且战力 +1，无法获得「运输」"]}},"苏维埃":{"quote":"占位符","keywords":["占位符"],"icon":"🚩","capital":"莫斯科","trait":"占位符","props":["占位符"],"unit":{"name":"火箭炮","type":"火炮","cost":"8","req":"需基建 3 级","power":"+1","props":["「远射」：受其他没有「远射」的陆军单位保护","「弹幕」：无视 1 点地形总惩罚","「溅射」：一回合一次，若战斗胜利，与随机一个敌军同地块单位交战，若失败亦不会死亡"]}},"芬兰":{"quote":"占位符","keywords":["占位符"],"icon":"⛄","capital":"新地","trait":"占位符","props":["占位符"],"unit":{"name":"狙击手","type":"步兵","cost":"3","req":"需基建 2 级","power":"+0","props":["「狙击」：对步兵战力 +1"]}},"波兰":{"quote":"占位符","keywords":["占位符"],"icon":"🐴","capital":"华沙","trait":"占位符","props":["占位符"],"unit":{"name":"骑兵","type":"步兵","cost":"3","req":"需基建 2 级","power":"+0","props":["「机动」：可调动 2 次"]}}};
 // ===== 剧本模式 =====
 const SCENARIOS = {
   sandbox: { name: "沙盒模式", desc: "自由混战，逐鹿欧洲", factions: null, icon: "" },
