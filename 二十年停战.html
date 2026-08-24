@@ -5335,21 +5335,6 @@ function drawAirMask() {
   if (!airStrikeState) return;
   octx.clearRect(0, 0, W, H);
   for (const p of DATA) {
-    if (!p.is_land) continue;
-    if (!airStrikeState.targets.has(p.id)) {
-      octx.fillStyle = "rgba(0,0,0,0.55)";
-      for (const row of p.runs) for (const seg of row.runs) octx.fillRect(seg[0], row.y, seg[1]-seg[0]+1, 1);
-    }
-  }
-  for (const id of airStrikeState.targets) {
-    const p = provinceById[id];
-    if (p) strokeProv(octx, p, "rgba(255,100,100,0.95)");
-  }
-}
-function drawAirMask() {
-  if (!airStrikeState) return;
-  octx.clearRect(0, 0, W, H);
-  for (const p of DATA) {
     if (!p.is_land && p.terrain !== "海洋") continue;
     if (!airStrikeState.targets.has(p.id)) {
       octx.fillStyle = "rgba(0,0,0,0.55)";
