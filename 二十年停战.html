@@ -8901,13 +8901,6 @@ function fmtMods(list) {
   for (const x of list) s += "　" + x.t + fmtN(x.v); // 统一无空格
   return s;
 }
-// 战斗修正全量计算（弹窗与结算共用）
-function fmtN(n) { return n >= 0 ? "+" + n : "" + n; }
-function fmtMods(list) {
-  let s = "";
-  for (const x of list) s += "　" + x.t + fmtN(x.v); // 统一无空格
-  return s;
-}
 // 地理惩罚独立显示（兵种修正之外）：地形-2 弹幕抵消+1 / 跨河-1
 function geoText(R) {
   let s = "";
