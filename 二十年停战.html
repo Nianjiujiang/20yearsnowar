@@ -1365,10 +1365,10 @@ function unitCostOf(u) {
   ensureUnitCost();
   return UNIT_COST[u.kind === "spec" ? u.name : u.kind] || 0;
 }
+// HTML 转义：防存档数据中的单位名/势力名注入 HTML（XSS 防护）
+function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 // 玩家状态：国库等
 const playerState = {};
-// 国库上限：全图 25 省满城市(4)满发展度(200)的最高回合收入
-const TREASURY_CAP = 3000;
 // 战争追踪（和平=上回合无战斗/占领）
 let prevWars = {}, curWars = {};
 function isPeace(f, g) {
@@ -3263,7 +3263,8 @@ function autoEconomy() {
     if (cost < bestCost) { bestCost = cost; best = p; }
   }
   if (!best) { showToast("无可建地块（建筑槽已满或无产能）"); return; }
-  if ((ps.cap || 0) < bestCost) { showToast("产能不足"); return; }
+  const realCost1 = factoryCost(f, best, "civ"); // 含国家特性造价修正（debuff 期实际更贵）
+  if ((ps.cap || 0) < realCost1) { showToast("产能不足"); return; }
   buildFactory(best.id, "civ");
 }
 // 自动军备：在价格最低的地方修建军工
@@ -3288,7 +3289,8 @@ function autoArmament() {
     if (cost < bestCost) { bestCost = cost; best = p; }
   }
   if (!best) { showToast("无可建地块（建筑槽已满或无产能）"); return; }
-  if ((ps.cap || 0) < bestCost) { showToast("产能不足"); return; }
+  const realCost2 = factoryCost(f, best, "mil"); // 含国家特性造价修正（debuff 期实际更贵）
+  if ((ps.cap || 0) < realCost2) { showToast("产能不足"); return; }
   buildFactory(best.id, "mil");
 }
 // （buildBuilding 已删：九州特色建筑，规则书无此系统，2026-08-20 廿九确认）
@@ -4398,18 +4400,6 @@ function chronicleAdd(t) {
   chronicleMerge = null; // 其他行动打断合并
   chronicle.push(t);
 }
-// （chronicleAddUpgrade 城市升级已删：九州残留死代码，规则书无城市系统）
-// 城市升级：连续升级同地块 → 合并为 LvA→LvB（中间无其他行动）
-function chronicleAddUpgrade(faction, provName, fromLv, toLv, cost) {
-  if (chronicleMerge && chronicle.length > 0 && chronicleMerge.type === "upgrade" && chronicleMerge.faction === faction && chronicleMerge.prov === provName) {
-    chronicleMerge.toLv = toLv;
-    chronicleMerge.cost += cost;
-    chronicle[chronicle.length - 1] = faction + " 在 " + provName + " 升级城市 Lv" + chronicleMerge.fromLv + "→Lv" + toLv + "（-" + Math.round(chronicleMerge.cost * 100) / 100 + " 钱）";
-    return;
-  }
-  chronicleMerge = { type: "upgrade", faction: faction, prov: provName, fromLv: fromLv, toLv: toLv, cost: cost };
-  chronicle.push(faction + " 在 " + provName + " 升级城市 Lv" + fromLv + "→Lv" + toLv + "（-" + cost + " 钱）");
-}
 // 调动：同源地块连续调兵去同目标 → 合并兵力（中间无其他行动）
 function chronicleAddMove(faction, srcProv, unitName, tgtOwnerText, tgtName, captured, capOwner) {
   if (chronicleMerge && chronicle.length > 0 && chronicleMerge.type === "move" && chronicleMerge.faction === faction && chronicleMerge.srcProv === srcProv && chronicleMerge.tgtName === tgtName) {
@@ -5006,6 +4996,7 @@ function calcPowerSplit(f) {
 }
 function recordTurnStats(netMap) {
   for (const f in playerState) {
+    if (eliminated[f]) continue; // 灭亡势力不再记录统计点（防 0 值拉低图表 Y 轴范围）
     if (!incomeHistory[f]) incomeHistory[f] = [];
     if (!powerHistory[f]) powerHistory[f] = [];
     if (!factoryHistory[f]) factoryHistory[f] = [];
@@ -5388,7 +5379,9 @@ function openAirStrikeModal(sourcePid, targetPid, targetUid, sourceUid) {
       return;
     }
   let cost = 3;
-  if (srcSt.units && srcSt.units.some(function(u) { return u.name === "航母"; })) cost = 2;
+  // 空袭费用：航母主动攻击（sourceUid 存在）= 2 军火/次；机场空袭 = 3 军火/次
+  // 修复：原逻辑仅判断源地块有无航母就降费，导致同时有机场+航母的地块机场空袭也被错误按 2 军火收费
+  if (sourceUid) cost = 2;
   airStrikeCtx = { sourcePid: sourcePid, targetPid: targetPid, targetUid: targetUid || null, sourceUid: sourceUid || null, count: 1, cost: cost };
   document.getElementById("battle-title").textContent = "空袭 " + tgt.name;
   updateAirModal();
@@ -5490,7 +5483,9 @@ function executeAirStrikes(sourcePid, targetPid, count, targetUid, noDice) {
     addRel(srcSt.owner, dst.owner, -3); enemyFriendsBoost(srcSt.owner, dst.owner, 1); // 空袭 -3 + 敌人的敌人 +1（2026-08-21 廿九：原 +3）
   }
   let cost = 3;
-  if (srcSt.units && srcSt.units.some(function(u) { return u.name === "航母"; })) cost = 2;
+  // 空袭费用：航母主动攻击（sourceUid 存在）= 2 军火/次；机场空袭 = 3 军火/次
+  // 修复：原逻辑仅判断源地块有无航母就降费，导致同时有机场+航母的地块机场空袭也被错误按 2 军火收费
+  if (sourceUid) cost = 2;
   const aa = (tgt.airport > 0) || (dst.units || []).some(function(u) { return u.name === "航母" || hasKeyword(u, "防空"); }); // 防空：地块机场/航母/带「防空」词条单位（防空炮）
   let done = 0;
   while (done < count && dst.units && dst.units.length > 0 && ps.mun >= cost) {
@@ -5600,7 +5595,7 @@ function showProvinceInfo(province) { if (replayMode) return; // 读史：点击
   if (agg.inf) armyTxt += "步兵×" + agg.inf;
   if (agg.cav) armyTxt += (armyTxt ? " " : "") + "机步×" + agg.cav;
   if (agg.rng) armyTxt += (armyTxt ? " " : "") + "火炮×" + agg.rng;
-  for (var si2=0;si2<agg.spec.length;si2++) armyTxt += (armyTxt ? " " : "") + agg.spec[si2].name + "×" + agg.spec[si2].count;
+  for (var si2=0;si2<agg.spec.length;si2++) armyTxt += (armyTxt ? " " : "") + esc(agg.spec[si2].name) + "×" + agg.spec[si2].count;
   if (!armyTxt) armyTxt = "无";
   detail += "<div class='pg' style='flex:1 1 100%'><span class='pg-v'>" + "军队：" + armyTxt + "</span></div>";
   detail += "</div>";
@@ -7480,7 +7475,7 @@ const SEA_COAST = {"波的尼亚湾": ["瓦萨", "耶夫勒堡", "西博滕"], "
 // 兵种战力（通用兵种 / 特殊兵种）
 const UNIT_POWER = {inf:0, cav:1, rng:1, tank:2};
 const SPEC_POWER = {"防空炮":1,"火箭炮":1}; // 特殊兵种战力修正（2026-08-20 廿九定稿：防空炮/火箭炮 +1，其余 +0 省略）
-const SPEC_TYPE = {"防空炮":"rng","火箭炮":"rng","伞兵":"inf","海军陆战队":"inf","狙击手":"inf","山地师":"inf"}; // 特殊兵种类型映射（防线为要塞单位无类型；骑兵按步兵注册）
+const SPEC_TYPE = {"防空炮":"rng","火箭炮":"rng","伞兵":"inf","海军陆战队":"inf","狙击手":"inf","山地师":"inf","骑兵":"cav"}; // 特殊兵种类型映射（防线为要塞单位无类型；骑兵按机步=cav 注册）
 // 地形进攻惩罚（仅攻方）：森林/丘陵/城市/沼泽-1，山地-2
 const TERRAIN_PENALTY = {"平原":0,"森林":1,"丘陵":1,"城市":1,"沼泽":1,"山地":2}; // 沙漠无惩罚（规则书五）
 // 优先攻击顺序（含海军：ship 末尾=兜底可被选中，港口停靠的舰队可被攻击，无特殊豁免；海军攻击优先打海军）
@@ -7604,7 +7599,7 @@ function makeUnit(kind, name, x, y, owner) {
     u.props = ["闪击"];
   }
   // （游牧/辽北面官/蒙古和平/汉 特性词条已删：九州残留，2026-08-20 廿九确认）
-  u.moves = unitMovePts(name, kind); // 基础调动点
+  u.moves = unitMovePts(name, kind, u.props); // 基础调动点（需传 props：德国闪击词条在此判断）
   return u;
 }
 // 攻击点上限：德国闪电战「闪击」词条——坦克/机步调动点+1、攻击点+1（可任意行动 2 次）
@@ -8843,7 +8838,7 @@ let atkMergeUnits = null; // 单兵进攻序列的参战兵种累计（{兵种�
 let atkDefTxt = ""; // 单兵进攻行的守方初始描述（重写时保留）
 // 通用兵种卡：名称 + 战力明细（修正项）+ 最终战力（withGeo=攻方含地形/跨河）
 function battleCardHtml(name, R, withGeo) {
-  return '<div class="jm-card"><div class="jm-name">' + name + '</div>'
+  return '<div class="jm-card"><div class="jm-name">' + esc(name) + '</div>'
     + '<div class="jm-line">战力' + fmtN(R.base) + fmtMods(R.list) + (withGeo ? geoText(R) : "") + '</div>'
     + '<div class="jm-line">最终战力　' + fmtN(R.total) + '</div></div>';
 }
@@ -9001,8 +8996,11 @@ function calcBattleMods(atkUnit, defUnit, src, dst, tgt, atkProv) {
   // ===== 国家特性战力修正（规则书十·六 2026-08-21 廿九定稿）=====
   // 统一标签：凡国家特性带来的修正一律显示「国家」（配合数值成 国家+1 / 国家-1），不写特性名
   // 法国 debuff「混乱的政府」：主动进攻时战力 -1；buff「抵抗运动」：防御时战力 +1（仅法国自己防守时生效，2026-08-21 廿九修：原仅判 src.owner 导致攻中立给守方+1 且法国防守不加）
+  // 修复：原用 atkUnit.atk > 0 判断是否进攻，但 calcBattleMods 在 doBattle（atk 减前）和
+  // resolveBattle（atk 减后）各调用一次，导致史官记录中法国 debuff 消失。改为无条件生效——
+  // calcBattleMods 仅在进攻场景被调用，法国进攻时 debuff 必然适用。
   if (src.owner === "法兰西") {
-    if (hasDebuff("法兰西") && atkUnit.atk > 0) R.atk.list.push({ t: "国家", v: -1 });
+    if (hasDebuff("法兰西")) R.atk.list.push({ t: "国家", v: -1 });
   }
   if (dst.owner === "法兰西" && hasBuff("法兰西")) R.def.list.push({ t: "国家", v: 1 });
   // 苏联 debuff「大清洗」：全体军队战力 -1（攻防都吃）
