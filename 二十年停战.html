@@ -7598,7 +7598,7 @@ function makeUnit(kind, name, x, y, owner) {
     u.props = ["闪击"];
   }
   // （游牧/辽北面官/蒙古和平/汉 特性词条已删：九州残留，2026-08-20 廿九确认）
-  u.moves = unitMovePts(name, kind); // 基础调动点
+  u.moves = unitMovePts(name, kind, u.props); // 基础调动点（需传 props：德国闪击词条在此判断）
   return u;
 }
 // 攻击点上限：德国闪电战「闪击」词条——坦克/机步调动点+1、攻击点+1（可任意行动 2 次）
