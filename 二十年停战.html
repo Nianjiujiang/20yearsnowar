@@ -3009,10 +3009,10 @@ function nextTurn() {
         if (!s2 || s2.owner !== f2) continue;
         cap2 += (p2.civ || 0); mun2 += (p2.mil || 0);
       }
+      // 美国 debuff「大萧条」：产能 -50%（觉醒前）——只砍本回合产出，不动已有储蓄（2026-08-24 修复：原对整个国库取半，凭空蒸发历史产能）
+      if (f2 === "美利坚" && hasDebuff("美利坚")) cap2 = Math.floor(cap2 / 2);
       ps2.cap = (ps2.cap || 0) + cap2;
       ps2.mun = (ps2.mun || 0) + mun2;
-      // 美国 debuff「大萧条」：产能 -50%（觉醒前）
-      if (f2 === "美利坚" && hasDebuff("美利坚")) ps2.cap = Math.floor(ps2.cap / 2);
       // 苏联 debuff「大清洗」：每回合产能 +3、军火 +3（2026-08-21 廿九：防止苏联前期太弱）
       if (f2 === "苏维埃" && hasDebuff("苏维埃")) { ps2.cap += 3; ps2.mun += 3; }
       // 资源上限：产能/军火各 4000（2026-08-21 廿九）
