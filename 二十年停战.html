@@ -8993,8 +8993,11 @@ function calcBattleMods(atkUnit, defUnit, src, dst, tgt, atkProv) {
   // ===== 国家特性战力修正（规则书十·六 2026-08-21 廿九定稿）=====
   // 统一标签：凡国家特性带来的修正一律显示「国家」（配合数值成 国家+1 / 国家-1），不写特性名
   // 法国 debuff「混乱的政府」：主动进攻时战力 -1；buff「抵抗运动」：防御时战力 +1（仅法国自己防守时生效，2026-08-21 廿九修：原仅判 src.owner 导致攻中立给守方+1 且法国防守不加）
+  // 修复：原用 atkUnit.atk > 0 判断是否进攻，但 calcBattleMods 在 doBattle（atk 减前）和
+  // resolveBattle（atk 减后）各调用一次，导致史官记录中法国 debuff 消失。改为无条件生效——
+  // calcBattleMods 仅在进攻场景被调用，法国进攻时 debuff 必然适用。
   if (src.owner === "法兰西") {
-    if (hasDebuff("法兰西") && atkUnit.atk > 0) R.atk.list.push({ t: "国家", v: -1 });
+    if (hasDebuff("法兰西")) R.atk.list.push({ t: "国家", v: -1 });
   }
   if (dst.owner === "法兰西" && hasBuff("法兰西")) R.def.list.push({ t: "国家", v: 1 });
   // 苏联 debuff「大清洗」：全体军队战力 -1（攻防都吃）
