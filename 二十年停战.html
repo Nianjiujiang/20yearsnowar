@@ -3263,7 +3263,8 @@ function autoEconomy() {
     if (cost < bestCost) { bestCost = cost; best = p; }
   }
   if (!best) { showToast("无可建地块（建筑槽已满或无产能）"); return; }
-  if ((ps.cap || 0) < bestCost) { showToast("产能不足"); return; }
+  const realCost1 = factoryCost(f, best, "civ"); // 含国家特性造价修正（debuff 期实际更贵）
+  if ((ps.cap || 0) < realCost1) { showToast("产能不足"); return; }
   buildFactory(best.id, "civ");
 }
 // 自动军备：在价格最低的地方修建军工
@@ -3288,7 +3289,8 @@ function autoArmament() {
     if (cost < bestCost) { bestCost = cost; best = p; }
   }
   if (!best) { showToast("无可建地块（建筑槽已满或无产能）"); return; }
-  if ((ps.cap || 0) < bestCost) { showToast("产能不足"); return; }
+  const realCost2 = factoryCost(f, best, "mil"); // 含国家特性造价修正（debuff 期实际更贵）
+  if ((ps.cap || 0) < realCost2) { showToast("产能不足"); return; }
   buildFactory(best.id, "mil");
 }
 // （buildBuilding 已删：九州特色建筑，规则书无此系统，2026-08-20 廿九确认）
