@@ -8979,8 +8979,6 @@ function calcBattleMods(atkUnit, defUnit, src, dst, tgt, atkProv) {
   if (enclaveOn && dst.owner && isEnclave(tgt.id, dst.owner)) R.def.list.push({ t: "飞地", v: -1 });
   // （天子守国门明首都 +1、武备废弛 -1 已删：九州残留，2026-08-20 廿九确认）
   // （船运词条已删：楼船为九州兵种，2026-08-20 廿九确认）
-  R.atk.river = { orig: rOrig, final: rFinal, cancel: rCancel };
-    R.atk.river.name = rIsSea ? "海峡" : "跨河";
     // 无海战模式：港口跨海攻击（本地块有港口 → 同海域沿海陆地）吃登陆惩罚（2026-08-21 廿九）
     let crossSeaAtk = false;
     if (centralPlains && atkProv.port > 0 && tgt.is_land && typeof SEA_COAST !== "undefined") {
