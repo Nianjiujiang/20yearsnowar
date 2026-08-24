@@ -5510,7 +5510,8 @@ function executeAirStrikes(sourcePid, targetPid, count, targetUid, noDice) {
     let atk = d1;
     if (aa) atk -= 1;
     if (srcSt.owner === "意大利" && hasBuff("意大利")) atk += 1; // 意大利 buff「皇家空军」：空袭战力+1
-    const defTotal = d2 + unitPower(def.kind, def.name);
+    let defTotal = d2 + unitPower(def.kind, def.name);
+    if (!dst.owner) defTotal -= 1; // 中立军队战力 -1（规则书九章：无主地块驻军战力 -1，空袭同样适用）
     const atkTotal = Math.max(1, Math.min(10, atk));
     const defTotalC = Math.max(1, Math.min(10, defTotal));
       if (!noDice) { // 联合行动（executeJointAttack 航母参战）不弹骰子——骰子只有单兵战斗/单点空袭才弹（2026-08-21 廿九）
