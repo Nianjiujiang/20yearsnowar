@@ -4398,18 +4398,6 @@ function chronicleAdd(t) {
   chronicleMerge = null; // 其他行动打断合并
   chronicle.push(t);
 }
-// （chronicleAddUpgrade 城市升级已删：九州残留死代码，规则书无城市系统）
-// 城市升级：连续升级同地块 → 合并为 LvA→LvB（中间无其他行动）
-function chronicleAddUpgrade(faction, provName, fromLv, toLv, cost) {
-  if (chronicleMerge && chronicle.length > 0 && chronicleMerge.type === "upgrade" && chronicleMerge.faction === faction && chronicleMerge.prov === provName) {
-    chronicleMerge.toLv = toLv;
-    chronicleMerge.cost += cost;
-    chronicle[chronicle.length - 1] = faction + " 在 " + provName + " 升级城市 Lv" + chronicleMerge.fromLv + "→Lv" + toLv + "（-" + Math.round(chronicleMerge.cost * 100) / 100 + " 钱）";
-    return;
-  }
-  chronicleMerge = { type: "upgrade", faction: faction, prov: provName, fromLv: fromLv, toLv: toLv, cost: cost };
-  chronicle.push(faction + " 在 " + provName + " 升级城市 Lv" + fromLv + "→Lv" + toLv + "（-" + cost + " 钱）");
-}
 // 调动：同源地块连续调兵去同目标 → 合并兵力（中间无其他行动）
 function chronicleAddMove(faction, srcProv, unitName, tgtOwnerText, tgtName, captured, capOwner) {
   if (chronicleMerge && chronicle.length > 0 && chronicleMerge.type === "move" && chronicleMerge.faction === faction && chronicleMerge.srcProv === srcProv && chronicleMerge.tgtName === tgtName) {
