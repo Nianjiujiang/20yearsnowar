@@ -1365,6 +1365,8 @@ function unitCostOf(u) {
   ensureUnitCost();
   return UNIT_COST[u.kind === "spec" ? u.name : u.kind] || 0;
 }
+// HTML 转义：防存档数据中的单位名/势力名注入 HTML（XSS 防护）
+function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 // 玩家状态：国库等
 const playerState = {};
 // 战争追踪（和平=上回合无战斗/占领）
@@ -5590,7 +5592,7 @@ function showProvinceInfo(province) { if (replayMode) return; // 读史：点击
   if (agg.inf) armyTxt += "步兵×" + agg.inf;
   if (agg.cav) armyTxt += (armyTxt ? " " : "") + "机步×" + agg.cav;
   if (agg.rng) armyTxt += (armyTxt ? " " : "") + "火炮×" + agg.rng;
-  for (var si2=0;si2<agg.spec.length;si2++) armyTxt += (armyTxt ? " " : "") + agg.spec[si2].name + "×" + agg.spec[si2].count;
+  for (var si2=0;si2<agg.spec.length;si2++) armyTxt += (armyTxt ? " " : "") + esc(agg.spec[si2].name) + "×" + agg.spec[si2].count;
   if (!armyTxt) armyTxt = "无";
   detail += "<div class='pg' style='flex:1 1 100%'><span class='pg-v'>" + "军队：" + armyTxt + "</span></div>";
   detail += "</div>";
@@ -8833,7 +8835,7 @@ let atkMergeUnits = null; // 单兵进攻序列的参战兵种累计（{兵种�
 let atkDefTxt = ""; // 单兵进攻行的守方初始描述（重写时保留）
 // 通用兵种卡：名称 + 战力明细（修正项）+ 最终战力（withGeo=攻方含地形/跨河）
 function battleCardHtml(name, R, withGeo) {
-  return '<div class="jm-card"><div class="jm-name">' + name + '</div>'
+  return '<div class="jm-card"><div class="jm-name">' + esc(name) + '</div>'
     + '<div class="jm-line">战力' + fmtN(R.base) + fmtMods(R.list) + (withGeo ? geoText(R) : "") + '</div>'
     + '<div class="jm-line">最终战力　' + fmtN(R.total) + '</div></div>';
 }
