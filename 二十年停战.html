@@ -4996,6 +4996,7 @@ function calcPowerSplit(f) {
 }
 function recordTurnStats(netMap) {
   for (const f in playerState) {
+    if (eliminated[f]) continue; // 灭亡势力不再记录统计点（防 0 值拉低图表 Y 轴范围）
     if (!incomeHistory[f]) incomeHistory[f] = [];
     if (!powerHistory[f]) powerHistory[f] = [];
     if (!factoryHistory[f]) factoryHistory[f] = [];
