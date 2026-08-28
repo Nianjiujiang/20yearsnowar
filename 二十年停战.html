@@ -4024,13 +4024,14 @@ function saveGame() {
       if (cs.units) cs.units = cs.units.map(function(u) { const c = Object.assign({}, u); delete c.x; delete c.y; return c; });
       saveProv[k] = cs;
     }
-    // 港口/机场存在 DATA 地块对象（p.port/p.airport），不在 provState——必须单独随档保存，否则读档后建造的港口/机场丢失（2026-08-21 廿九修）
+    // 港口/机场/基建/工厂都写在 DATA 地块对象（p.port/p.airport/p.infra/p.civ/p.mil），不在 provState——必须单独随档保存，否则读档后全部丢失（2026-08-21 廿九修港口/机场；2026-08-29 补基建/工厂）
     for (const _sp of DATA) {
-      if ((_sp.port || 0) > 0 || (_sp.airport || 0) > 0) {
-        const s2 = saveProv[_sp.id] || (saveProv[_sp.id] = {});
-        s2.port = _sp.port || 0;
-        s2.airport = _sp.airport || 0;
-      }
+      const s2 = saveProv[_sp.id] || (saveProv[_sp.id] = {});
+      s2.infra = Math.max(0, Math.min(5, _sp.infra || 0)); // 基建 0-5 级
+      s2.civ = Math.max(0, Math.floor(_sp.civ || 0)); // 民用工厂数
+      s2.mil = Math.max(0, Math.floor(_sp.mil || 0)); // 军用工厂数
+      s2.port = _sp.port || 0;
+      s2.airport = _sp.airport || 0;
     }
     const data = {
       pickOrder: pickOrder, picks: picks,
@@ -4083,12 +4084,17 @@ function applyLoadedSave(d) {
     currentTurn = d.currentTurn || 1; gamePhase = d.gamePhase || "build"; currentPlayerIdx = d.currentPlayerIdx || 0;
     for (const k in provState) delete provState[k];
     Object.assign(provState, d.provState || {});
-    // 恢复港口/机场（存档里 port/airport 存在 provState 对应地块；DATA 是地图静态对象，运行时港口/机场写在其上——读档必须同步回 DATA，否则建造的港口/机场丢失，2026-08-21 廿九修）
+    // 恢复 DATA 地块对象字段（基建/工厂/港口/机场都写在 DATA 上：读档必须同步回 DATA，否则全部丢失；旧档无 infra/civ/mil 字段则保留 DATA 当前值，2026-08-21 廿九修港口/机场，2026-08-29 补基建/工厂）
     for (const k in provState) {
       const _stk = provState[k];
-      if (!_stk || (!_stk.port && !_stk.airport)) continue;
+      if (!_stk) continue;
       const _pp = provinceById[parseInt(k)];
-      if (_pp) { _pp.port = _stk.port || 0; _pp.airport = _stk.airport || 0; }
+      if (!_pp) continue;
+      _pp.infra = Math.max(0, Math.min(5, _stk.infra !== undefined ? _stk.infra : (_pp.infra || 0)));
+      _pp.civ = Math.max(0, Math.floor(_stk.civ !== undefined ? _stk.civ : (_pp.civ || 0)));
+      _pp.mil = Math.max(0, Math.floor(_stk.mil !== undefined ? _stk.mil : (_pp.mil || 0)));
+      _pp.port = _stk.port || 0;
+      _pp.airport = _stk.airport || 0;
     }
     for (const k in playerState) delete playerState[k];
     Object.assign(playerState, d.playerState || {});
