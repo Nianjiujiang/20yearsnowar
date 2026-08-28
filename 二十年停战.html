@@ -3009,6 +3009,10 @@ function nextTurn() {
         if (!s2 || s2.owner !== f2) continue;
         cap2 += (p2.civ || 0); mun2 += (p2.mil || 0);
       }
+      // 收入倍率（沙盒可调 0.5~3，剧本固定 0.5）：实际入账与 calcIncomeRaw 显示值一致（桌游固定 1 倍）；修复原入账不乘倍率、设置只改面板数字的问题
+      const scale2 = incomeScale();
+      cap2 = Math.round(cap2 * scale2);
+      mun2 = Math.round(mun2 * scale2);
       // 美国 debuff「大萧条」：产能 -50%（觉醒前）——只砍本回合产出，不动已有储蓄（2026-08-24 修复：原对整个国库取半，凭空蒸发历史产能）
       if (f2 === "美利坚" && hasDebuff("美利坚")) cap2 = Math.floor(cap2 / 2);
       ps2.cap = (ps2.cap || 0) + cap2;
