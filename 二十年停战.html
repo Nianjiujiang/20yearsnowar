@@ -1367,6 +1367,20 @@ function unitCostOf(u) {
 }
 // HTML 转义：防存档数据中的单位名/势力名注入 HTML（XSS 防护）
 function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+// 深度剔除危险键（__proto__/constructor/prototype）：存档/回放/剧本等导入 JSON 不可信，
+// 防止 Object.assign 或属性写入触发原型污染（2026-08-29）
+function sanitizeJson(o) {
+  if (Array.isArray(o)) { for (let i = 0; i < o.length; i++) o[i] = sanitizeJson(o[i]); return o; }
+  if (o && typeof o === "object") {
+    const out = {};
+    for (const k in o) {
+      if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
+      out[k] = sanitizeJson(o[k]);
+    }
+    return out;
+  }
+  return o;
+}
 // 玩家状态：国库等
 const playerState = {};
 // 战争追踪（和平=上回合无战斗/占领）
@@ -4075,7 +4089,7 @@ function importSaveFile(input) {
   if (aiBusy) { showToast("电脑行动中，请稍后再读档"); input.value = ""; return; } // 兜底：文件选择器在 AI 回合中打开过也拦截
   const rd = new FileReader();
   rd.onload = function() {
-    try { applyLoadedSave(JSON.parse(rd.result)); }
+    try { applyLoadedSave(sanitizeJson(JSON.parse(rd.result))); }
     catch (e) { showToast("读档失败：" + e.message); }
   };
   rd.readAsText(f);
@@ -4505,11 +4519,11 @@ function importReplayFile(input) {
       const MARK = "=====读史数据=====";
       let data;
       if (raw.indexOf(MARK) >= 0) {
-        data = JSON.parse(raw.slice(raw.indexOf(MARK) + MARK.length)); // 带回放段：直接取 JSON
+        data = sanitizeJson(JSON.parse(raw.slice(raw.indexOf(MARK) + MARK.length))); // 带回放段：直接取 JSON
       } else if (raw.indexOf("二十年停战 战报") >= 0) {
-        data = parseReplayText(raw); // 纯文本史官：直接从记载解析
+        data = sanitizeJson(parseReplayText(raw)); // 纯文本史官：直接从记载解析（省份/兵种名来自文件，一并消毒）
       } else {
-        data = JSON.parse(raw); // 纯 JSON 读史文件
+        data = sanitizeJson(JSON.parse(raw)); // 纯 JSON 读史文件
       }
       if (!data || !data.frames || !data.frames.length) throw new Error("缺少帧数据");
       enterReplay(data);
@@ -4559,7 +4573,8 @@ function renderReplayFrame(i) {
   for (const pid in fr.st) {
     const d = fr.st[pid];
     const prov = provinceById[pid];
-    const cx = prov ? prov.center[0] : 0, cy = prov ? prov.center[1] : 0;
+    if (!prov || prov.id === undefined) continue; // 未知地块 id（含 __proto__ 等危险键，会取到 Object.prototype）直接跳过：防原型污染/崩溃（2026-08-29）
+    const cx = prov.center[0], cy = prov.center[1];
     const units = [];
     for (const nm in d.u) for (let k = 0; k < d.u[nm]; k++) {
       const def = UNIT_DEFS[nm];
@@ -10737,7 +10752,7 @@ function importScenarioFile(input) {
   const rd = new FileReader();
   rd.onload = function() {
     try {
-      const j = JSON.parse(rd.result);
+      const j = sanitizeJson(JSON.parse(rd.result));
       if (!j.name) throw new Error("no name");
       const id = "custom" + Math.floor(Math.random() * 90000 + 10000);
       j.factions = j.factions && j.factions.length ? j.factions : ORDER.slice();
