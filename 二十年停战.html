@@ -6069,7 +6069,8 @@ function applySetup(stp) {
     for (const a of stp.armies[pname]) {
       const def = UNIT_DEFS[a.name];
       if (!def) continue;
-      for (let n = 0; n < a.count; n++) {
+      const cnt = Math.max(0, Math.min(50, parseInt(a.count) || 0)); // 导入剧本不可信：数量钳制 0-50，防超大 count 卡死页面（2026-08-29）
+      for (let n = 0; n < cnt; n++) {
         const u = makeUnit(def.kind, a.name, p.center[0], p.center[1], s.owner);
         s.units.push(u);
         const rp = randPosInProv(p);
@@ -9545,8 +9546,14 @@ function recomputeSupply() {
     if (!ss) continue;
     const units = ss.units || [];
     if (units.length === 0) { ss.owner = null; continue; }
-    const anyOwner = units.find(function(u) { return u.owner; }) || null;
-    ss.owner = anyOwner ? anyOwner.owner : null;
+    // 归属取唯一有主舰队；混编多主（畸形存档）或全部无主 → 归中立（2026-08-29 防御：原取第一个有主单位的 owner）
+    let seaOwner = null;
+    for (const u of units) {
+      if (!u.owner) continue;
+      if (seaOwner && seaOwner !== u.owner) { seaOwner = null; break; }
+      seaOwner = u.owner;
+    }
+    ss.owner = seaOwner;
   }
   for (const f in playerState) computePortValidity(f);
   for (const f in playerState) {
