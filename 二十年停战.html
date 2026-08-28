@@ -6226,6 +6226,7 @@ document.addEventListener("keydown", function(e) {
   if (!prov) return;
   const s = provState[prov.id];
   if (!s || s.owner !== picks[currentPlayerIdx]) return; // 只能操作自己的地块
+  if (aiBusy || !pickOrder[currentPlayerIdx] || pickOrder[currentPlayerIdx].type !== "human") return; // AI 行动中/电脑座位：不可代操作（与 autoEconomy 守卫一致）
   e.preventDefault();
   // 0：行动阶段=联合行动（阶段排他），建造阶段=特殊兵种（法国防线优先）
   if (num === 0) {
