@@ -1367,6 +1367,22 @@ function unitCostOf(u) {
 }
 // HTML 转义：防存档数据中的单位名/势力名注入 HTML（XSS 防护）
 function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+// HTML 属性值转义（单引号属性防逃逸）：esc 不处理单引号，onclick='...' 等单引号属性用此函数（2026-08-29）
+function attr(s) { return esc(s).replace(/'/g, "&#39;"); }
+// 深度剔除危险键（__proto__/constructor/prototype）：存档/回放/剧本等导入 JSON 不可信，
+// 防止 Object.assign 或属性写入触发原型污染（2026-08-29）
+function sanitizeJson(o) {
+  if (Array.isArray(o)) { for (let i = 0; i < o.length; i++) o[i] = sanitizeJson(o[i]); return o; }
+  if (o && typeof o === "object") {
+    const out = {};
+    for (const k in o) {
+      if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
+      out[k] = sanitizeJson(o[k]);
+    }
+    return out;
+  }
+  return o;
+}
 // 玩家状态：国库等
 const playerState = {};
 // 战争追踪（和平=上回合无战斗/占领）
@@ -1455,8 +1471,8 @@ function startTurnTimer() {
 function updateTurnUI() {
   startTurnTimer();
   let cur = "";
-  if (aiBusy && pickOrder[currentPlayerIdx] && pickOrder[currentPlayerIdx].type === "computer") cur = "🤖 电脑行动中：" + curName();
-  else if (currentPlayerIdx >= 0 && currentPlayerIdx < pickOrder.length) cur = "当前势力：" + curName();
+  if (aiBusy && pickOrder[currentPlayerIdx] && pickOrder[currentPlayerIdx].type === "computer") cur = "🤖 电脑行动中：" + esc(curName()); // 读史模式势力名来自导入文件：转义（2026-08-29）
+  else if (currentPlayerIdx >= 0 && currentPlayerIdx < pickOrder.length) cur = "当前势力：" + esc(curName());
   document.getElementById("turn-label").innerHTML =
     "第 " + currentTurn + " 回合<br>" +
     (gamePhase === "build" ? "建造阶段" : "行动阶段") +
@@ -3320,14 +3336,14 @@ function updatePlayersPanel() {
       // （debuffLines 已删：九州残留）
       // 外交关系：显示当前行动者对该势力的态度 emoji（隐藏数值，悬停查看详情）
       const relCur = picks[currentPlayerIdx] || "";
-      const relTag = (f !== relCur && relCur) ? " <span title=\"" + displayName(relCur) + " 对 " + displayName(f) + " 的关系（隐藏数值）\">" + relEmoji(relCur, f) + (isPeace(relCur, f) ? "🏳️" : "🔥") + "</span>" : "";
+      const relTag = (f !== relCur && relCur) ? " <span title=\"" + esc(displayName(relCur)) + " 对 " + esc(displayName(f)) + " 的关系（隐藏数值）\">" + relEmoji(relCur, f) + (isPeace(relCur, f) ? "🏳️" : "🔥") + "</span>" : ""; // 读史模式势力名来自导入文件：转义（2026-08-29）
       // （国家特性状态标记已删：查看条件/奖励请用左上角 🏛️ 按钮，2026-08-21）
       // 援助按钮：当前人类玩家可给其他存活国家送 5 产能/5 军火 + 关系 +5（2026-08-21 廿九）
       const canAid = !!relCur && relCur !== f && !aiBusy && pickOrder[currentPlayerIdx] && pickOrder[currentPlayerIdx].type === "human";
       // 军力分陆海（2026-08-21 廿九：国家列表军力分开显示）
       const pwSplit = calcPowerSplit(f);
-      h += "<div class='pl" + (i === currentPlayerIdx ? " cur" : "") + "'><span class='f'>" + displayName(f) + " " + pname.replace(/：/g, "·") + relTag +
-           (canAid ? " <span class='aid-btns'><button class='aid-btn' onclick='giveAid(\"" + f + "\",\"civ\")'>工业援助</button><button class='aid-btn' onclick='giveAid(\"" + f + "\",\"mil\")'>军火援助</button></span>" : "") +
+      h += "<div class='pl" + (i === currentPlayerIdx ? " cur" : "") + "'><span class='f'>" + esc(displayName(f)) + " " + esc(pname.replace(/：/g, "·")) + relTag +
+           (canAid ? " <span class='aid-btns'><button class='aid-btn' onclick='" + attr("giveAid(" + JSON.stringify(f) + ',"civ")') + "'>工业援助</button><button class='aid-btn' onclick='" + attr("giveAid(" + JSON.stringify(f) + ',"mil")') + "'>军火援助</button></span>" : "") +
            "</span><br>" +
            "<span class='st'>产能 " + capS + " +" + capInc + "/T　|　军火 " + munS + " +" + munInc + "/T　|　陆军 " + pwSplit.army + "　海军 " + pwSplit.navy + "</span></div>";
     }
@@ -4075,7 +4091,7 @@ function importSaveFile(input) {
   if (aiBusy) { showToast("电脑行动中，请稍后再读档"); input.value = ""; return; } // 兜底：文件选择器在 AI 回合中打开过也拦截
   const rd = new FileReader();
   rd.onload = function() {
-    try { applyLoadedSave(JSON.parse(rd.result)); }
+    try { applyLoadedSave(sanitizeJson(JSON.parse(rd.result))); }
     catch (e) { showToast("读档失败：" + e.message); }
   };
   rd.readAsText(f);
@@ -4449,7 +4465,7 @@ function fmtBattlePoint(dice, R) {
 function openChronicle() {
   const el = document.getElementById("chronicle-list");
   if (!chronicle.length) el.innerHTML = "<div style='color:#999;padding:10px'>暂无记录</div>";
-  else el.innerHTML = chronicle.map((c) => c.indexOf("――") === 0 ? "<div style='color:#e8e6ee;text-align:center;margin:6px 0;letter-spacing:2px;font-weight:bold'>" + c + "</div>" : "<div class='cl'>" + c + "</div>").join("");
+  else el.innerHTML = chronicle.map((c) => c.indexOf("――") === 0 ? "<div style='color:#e8e6ee;text-align:center;margin:6px 0;letter-spacing:2px;font-weight:bold'>" + esc(c) + "</div>" : "<div class='cl'>" + esc(c) + "</div>").join("");
   document.getElementById("chronicle-modal").classList.remove("hidden");
 }
 function closeChronicle() { document.getElementById("chronicle-modal").classList.add("hidden"); }
@@ -4505,11 +4521,11 @@ function importReplayFile(input) {
       const MARK = "=====读史数据=====";
       let data;
       if (raw.indexOf(MARK) >= 0) {
-        data = JSON.parse(raw.slice(raw.indexOf(MARK) + MARK.length)); // 带回放段：直接取 JSON
+        data = sanitizeJson(JSON.parse(raw.slice(raw.indexOf(MARK) + MARK.length))); // 带回放段：直接取 JSON
       } else if (raw.indexOf("二十年停战 战报") >= 0) {
-        data = parseReplayText(raw); // 纯文本史官：直接从记载解析
+        data = sanitizeJson(parseReplayText(raw)); // 纯文本史官：直接从记载解析（省份/兵种名来自文件，一并消毒）
       } else {
-        data = JSON.parse(raw); // 纯 JSON 读史文件
+        data = sanitizeJson(JSON.parse(raw)); // 纯 JSON 读史文件
       }
       if (!data || !data.frames || !data.frames.length) throw new Error("缺少帧数据");
       enterReplay(data);
@@ -4559,7 +4575,8 @@ function renderReplayFrame(i) {
   for (const pid in fr.st) {
     const d = fr.st[pid];
     const prov = provinceById[pid];
-    const cx = prov ? prov.center[0] : 0, cy = prov ? prov.center[1] : 0;
+    if (!prov || prov.id === undefined) continue; // 未知地块 id（含 __proto__ 等危险键，会取到 Object.prototype）直接跳过：防原型污染/崩溃（2026-08-29）
+    const cx = prov.center[0], cy = prov.center[1];
     const units = [];
     for (const nm in d.u) for (let k = 0; k < d.u[nm]; k++) {
       const def = UNIT_DEFS[nm];
@@ -4592,7 +4609,7 @@ function renderReplayFrame(i) {
   const evEl = document.getElementById("replay-ev");
   if (evEl) {
     const _evHtml = (fr.t || []).filter(function(c) { return c.indexOf("战斗：") < 0 && c.indexOf("：国库") < 0 && c.indexOf("――") !== 0; }).map(function(c) {
-      return c.indexOf("――") === 0 ? "<div style='color:#e8e6ee;font-weight:bold;margin:8px 0 4px;padding:3px 0;border-top:1px dashed rgba(255,255,255,.25);border-bottom:1px dashed rgba(255,255,255,.25);letter-spacing:1px'>" + c + "</div>" : "<div class='re'>" + c + "</div>";
+      return c.indexOf("――") === 0 ? "<div style='color:#e8e6ee;font-weight:bold;margin:8px 0 4px;padding:3px 0;border-top:1px dashed rgba(255,255,255,.25);border-bottom:1px dashed rgba(255,255,255,.25);letter-spacing:1px'>" + esc(c) + "</div>" : "<div class='re'>" + esc(c) + "</div>"; // 行文本来自导入的读史文件：必须转义防 XSS（2026-08-29）
     }).join("");
     if (_evHtml) { _replayEvBuf = _evHtml; evEl.innerHTML = _evHtml; }
     else if (_replayEvBuf) evEl.innerHTML = _replayEvBuf; // 空帧：沿用上一句，不空白
@@ -5715,7 +5732,7 @@ function showProvinceInfo(province) { if (replayMode) return; // 读史：点击
 function showUnitTip(unit, cx, cy) {
   ensureUnitDefs();
   const def = UNIT_DEFS[unit.name] || {name:unit.name, type:"?", cost:0, req:"", power:"+0", props:[]};
-  let h = "<div class='ut-name'><span>" + def.name + "<span class='ut-type'>" + (def.type || "") + "</span></span>";
+  let h = "<div class='ut-name'><span>" + esc(def.name) + "<span class='ut-type'>" + esc(def.type || "") + "</span></span>"; // 兵种名可能来自导入存档（未知兵种 fallback）：转义防 XSS（2026-08-29）
   // 行动状态：可调动/可攻击（与名字同行右侧，仅行动阶段显示；不暴露调动点/攻击点数值——廿九定稿术语）
   if (gamePhase === "action") {
     const canMove = unit.moves >= moveCost(unit);
@@ -5742,7 +5759,7 @@ function showUnitTip(unit, cx, cy) {
     for (const kw of kwOrder) {
       // 远射分陆军/海军两版描述（都叫「远射」，按单位海陆选；2026-08-21 廿九）
       const desc = kw === "远射" ? (KW_DESC[unit.kind === "ship" ? "远射·海军" : "远射"] || "") : (KW_DESC[kw] || "");
-      h += "<div class='ut-prop'>" + (desc || "「" + kw + "」") + "</div>";
+      h += "<div class='ut-prop'>" + (desc || "「" + esc(kw) + "」") + "</div>"; // 词条名可能来自存档单位 props：转义（2026-08-29）
     }
     h += "</div>";
   }
@@ -6052,7 +6069,8 @@ function applySetup(stp) {
     for (const a of stp.armies[pname]) {
       const def = UNIT_DEFS[a.name];
       if (!def) continue;
-      for (let n = 0; n < a.count; n++) {
+      const cnt = Math.max(0, Math.min(50, parseInt(a.count) || 0)); // 导入剧本不可信：数量钳制 0-50，防超大 count 卡死页面（2026-08-29）
+      for (let n = 0; n < cnt; n++) {
         const u = makeUnit(def.kind, a.name, p.center[0], p.center[1], s.owner);
         s.units.push(u);
         const rp = randPosInProv(p);
@@ -9528,8 +9546,14 @@ function recomputeSupply() {
     if (!ss) continue;
     const units = ss.units || [];
     if (units.length === 0) { ss.owner = null; continue; }
-    const anyOwner = units.find(function(u) { return u.owner; }) || null;
-    ss.owner = anyOwner ? anyOwner.owner : null;
+    // 归属取唯一有主舰队；混编多主（畸形存档）或全部无主 → 归中立（2026-08-29 防御：原取第一个有主单位的 owner）
+    let seaOwner = null;
+    for (const u of units) {
+      if (!u.owner) continue;
+      if (seaOwner && seaOwner !== u.owner) { seaOwner = null; break; }
+      seaOwner = u.owner;
+    }
+    ss.owner = seaOwner;
   }
   for (const f in playerState) computePortValidity(f);
   for (const f in playerState) {
@@ -10737,7 +10761,7 @@ function importScenarioFile(input) {
   const rd = new FileReader();
   rd.onload = function() {
     try {
-      const j = JSON.parse(rd.result);
+      const j = sanitizeJson(JSON.parse(rd.result));
       if (!j.name) throw new Error("no name");
       const id = "custom" + Math.floor(Math.random() * 90000 + 10000);
       j.factions = j.factions && j.factions.length ? j.factions : ORDER.slice();
@@ -10762,9 +10786,10 @@ function renderScenarios() {
   if (!el) return;
   el.innerHTML = Object.keys(SCENARIOS).map(function(id) {
     const s = SCENARIOS[id];
+    // name/desc/icon 来自导入剧本文件：转义防 XSS；icon 的 data: 分支剥掉引号防属性逃逸（2026-08-29）
     return "<div class='sc-card" + (scenarioId === id ? " ac" : "") + "' onclick='pickScenario(\"" + id + "\")'>" +
-      (s.icon ? (s.icon.indexOf("data:") === 0 ? "<img src=\'" + s.icon + "\' alt=\'\'>" : "<div class=\'sc-emoji\'>" + s.icon + "</div>") : "<div class=\'sc-emoji\'>🌍</div>")+
-      "<div class='sc-name'>" + s.name + "</div><div class='sc-desc'>" + (s.desc || "").replace(/\n/g, "<br>") + "</div></div>";
+      (s.icon ? (s.icon.indexOf("data:") === 0 ? "<img src=\'" + s.icon.replace(/['"\\]/g, "") + "\' alt=\'\'>" : "<div class=\'sc-emoji\'>" + esc(s.icon) + "</div>") : "<div class=\'sc-emoji\'>🌍</div>")+
+      "<div class='sc-name'>" + esc(s.name) + "</div><div class='sc-desc'>" + esc(s.desc || "").replace(/\n/g, "<br>") + "</div></div>";
   }).join("");
 }
 function pickScenario(id) { scenarioId = id; boardMode = false; incomeMult = (id === "sandbox") ? 1 : 0.5; if (id !== "sandbox") { var _cbb2 = document.getElementById("cb-board"); if (_cbb2) _cbb2.checked = false; } if (id !== "sandbox" && centralPlains) { centralPlains = false; restoreCentralPlainsPorts(); var _ccb2 = document.getElementById("cb-central"); if (_ccb2) _ccb2.checked = false; } renderScenarios(); updateSeats(); updateScenarioUI(); } // 无海战/桌游仅沙盒；切剧本自动关闭
