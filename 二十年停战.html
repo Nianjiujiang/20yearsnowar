@@ -1523,7 +1523,7 @@ function addRel(a, b, d) {
 }
 // ===== AI 系统（v1：建造阶段） =====
 let aiBusy = false; // AI 回合中：锁定玩家操作，只能看着 AI 行动
-let aiPaused = false; // AI 冻结：玩家首都失陷强制迁都中（AI 链轮询挂起，迁都完成后恢复）
+// （aiPaused 已删：强制迁都为九州残留，标记永远为 false，2026-08-30 清理）
 // 防守压力：相邻地块中非己方（敌国+中立）的总兵力
 let aiThreatCache = null; // AI step 内威胁缓存（状态在 step 内不变，重复调用只算一次）
 function aiThreat(pid, f) {
@@ -1837,7 +1837,6 @@ function aiActionNormal() {
   let triedTargets = {}; // 本回合已尝试攻击的目标（打一次没拿下不重复，防死磕）
   let amphTried = {}; // 本回合两栖/海军机动已尝试的 源→目标 组合（失败=空 movers 不真执行；成败都记，防空 movers 反复无效调动死循环，2026-08-21 廿九）
   (function step() {
-    if (aiPaused) { setTimeout(step, 50); return; } // 冻结：玩家强制迁都中（迁都后恢复）
     if (steps++ > 400) { aiAdvance(); return; } // 防死循环上限（400 步：2026-08-21 廿九提上限——200 步大图/多地块时轮不完，二动单位（坦克/闪击机步）第二轮行动被漏掉）
     if (performance.now() > aiActionDeadline) { aiAdvance(); return; } // 超时兜底（绝不卡死）
     aiThreatCache = new Map(); // 每 step 新缓存（状态可能已变）
@@ -2710,7 +2709,6 @@ function aiBuildTurn() {
   // 防死循环上限：领地 20+ 时建造步骤多，上限随领地数动态扩容（20 块 ≈ 900 步），避免预算没花完就提前结束
   const buildStepLimit = function() { return Math.max(300, aiOwnedProvinces(picks[currentPlayerIdx]).length * 30); };
   function aiBuildStep() {
-    if (aiPaused) { setTimeout(aiBuildStep, 50); return; } // 冻结：玩家强制迁都中（迁都后恢复）
     if (steps++ > buildStepLimit() || aiBuildGuard()) { aiFinish(); return; } // 防死循环上限 + 超时兜底
     try {
     aiThreatCache = new Map(); // 每 step 新缓存
@@ -2986,6 +2984,7 @@ function startPhase(p, silent) {
   aiMaybeTurn(); // 轮到电脑 → 自动 AI
 }
 function turnClick() {
+  if (replayMode) return; // 读史回放：禁止回合推进（空格/按钮/回合计时器共用此入口，2026-08-30）
   // 回合推进前统一清理残留 UI 状态（2026-08-21 检修：联合遮罩/空袭模式跨回合残留会让下一玩家代旧玩家执行调动、或锁死地图点击）
   if (jointActive) jointCancel();
   if (airStrikeState && airStrikeState.active) clearAirMask();
@@ -3338,8 +3337,8 @@ function updatePlayersPanel() {
       const relCur = picks[currentPlayerIdx] || "";
       const relTag = (f !== relCur && relCur) ? " <span title=\"" + esc(displayName(relCur)) + " 对 " + esc(displayName(f)) + " 的关系（隐藏数值）\">" + relEmoji(relCur, f) + (isPeace(relCur, f) ? "🏳️" : "🔥") + "</span>" : ""; // 读史模式势力名来自导入文件：转义（2026-08-29）
       // （国家特性状态标记已删：查看条件/奖励请用左上角 🏛️ 按钮，2026-08-21）
-      // 援助按钮：当前人类玩家可给其他存活国家送 5 产能/5 军火 + 关系 +5（2026-08-21 廿九）
-      const canAid = !!relCur && relCur !== f && !aiBusy && pickOrder[currentPlayerIdx] && pickOrder[currentPlayerIdx].type === "human";
+      // 援助按钮：当前人类玩家可给其他存活国家送 5 产能/5 军火 + 关系 +5（2026-08-21 廿九）；读史回放不渲染（按钮点了会污染回放状态，2026-08-30）
+      const canAid = !replayMode && !!relCur && relCur !== f && !aiBusy && pickOrder[currentPlayerIdx] && pickOrder[currentPlayerIdx].type === "human";
       // 军力分陆海（2026-08-21 廿九：国家列表军力分开显示）
       const pwSplit = calcPowerSplit(f);
       h += "<div class='pl" + (i === currentPlayerIdx ? " cur" : "") + "'><span class='f'>" + esc(displayName(f)) + " " + esc(pname.replace(/：/g, "·")) + relTag +
@@ -3352,6 +3351,7 @@ function updatePlayersPanel() {
 }
 // 援助：送 5 产能/5 军火 给目标国 + 关系 +5（2026-08-21 廿九）
 function giveAid(to, type) {
+  if (replayMode) return; // 读史回放：禁止援助（防改写回放历史资源/关系/史官记录，2026-08-30）
   const me = picks[currentPlayerIdx];
   if (!me || !playerState[me] || me === to || eliminated[to] || !playerState[to]) return;
   if (aiBusy) return;
@@ -4034,6 +4034,16 @@ canvas.addEventListener("touchmove", function(e) {
 canvas.addEventListener("touchend", function() { pinchDist = 0; });
 
 // ===== 存档 / 读档（localStorage） =====
+// 统一文件下载：createObjectURL → 点击 → 延迟 revoke。同步 revoke 在部分 Safari 版本会导致下载失败，统一延迟 10 秒释放（2026-08-30）
+function downloadBlob(blob, filename) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function() { URL.revokeObjectURL(a.href); }, 10000);
+}
 function saveGame() {
   try {
     // 存档不记录小兵坐标（只需知道在哪个地块）；读取时自动围圈分配
@@ -4067,15 +4077,9 @@ function saveGame() {
     };
     // 存档 = 下载 JSON 文件（玩家自己保存）
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); // 缩进 2 空格多行格式：史官记录/地块状态可直接查看与手动编辑
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
     const now = new Date();
     const pad = function(n) { return (n < 10 ? "0" : "") + n; };
-    a.download = "二十年停战_存档_" + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "_" + pad(now.getHours()) + pad(now.getMinutes()) + ".json";
-    document.body.appendChild(a);
-    a.click();
-    URL.revokeObjectURL(a.href);
-    a.remove();
+    downloadBlob(blob, "二十年停战_存档_" + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "_" + pad(now.getHours()) + pad(now.getMinutes()) + ".json");
     showToast("💾 存档已下载");
   } catch (e) {
     showToast("存档失败：" + e.message);
@@ -4472,11 +4476,7 @@ function closeChronicle() { document.getElementById("chronicle-modal").classList
 function exportChronicle() {
   const t = ["二十年停战 战报", "回合数：" + currentTurn, "生成时间：" + new Date().toLocaleString(), "--------------------------------", ""].join("\n") + chronicle.join("\n") // 导出不带序号;
   const blob = new Blob(["\ufeff" + t], { type: "text/plain;charset=utf-8" }); // 纯文本史官（读史直接解析文本，无需回放段）
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "二十年停战_史料.txt";
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadBlob(blob, "二十年停战_史料.txt");
 }
 
 // ===== 读史（回放）系统 =====
@@ -4560,9 +4560,12 @@ function enterReplay(data) {
   for (const k in playerState) delete playerState[k];
   for (const k in eliminated) delete eliminated[k];
   if (MODE_3D && !THREE_READY) {
-    init3D(); // 读史也遵循 3D 模式：拉起立体场景
+    try { init3D(); } catch (e) { console.error("3D初始化失败:", e); MODE_3D = false; showToast("立体模式初始化失败，已回退 2D"); } // WebGL 不可用等异常不让读史卡死（2026-08-30）
+    let t3dWait = 0;
     const t = setInterval(function() {
-      if (THREE_READY) { clearInterval(t); if (replayMode) renderReplayFrame(replayIdx); }
+      if (THREE_READY) { clearInterval(t); if (replayMode) renderReplayFrame(replayIdx); return; }
+      // 封顶 150 次（≈30 秒）：3D 始终未就绪则按 2D 渲染回放，不再无限等待（2026-08-30）
+      if (++t3dWait > 150 || !MODE_3D) { clearInterval(t); if (replayMode) renderReplayFrame(replayIdx); }
     }, 200);
   }
   renderReplayFrame(0);
@@ -4590,8 +4593,9 @@ function renderReplayFrame(i) {
   for (const s of (replayData.seats || [])) if (s.f) seatName[s.f] = s.name;
   for (const f in playerState) delete playerState[f];
   for (const f in fr.pl) {
-    playerState[f] = { name: seatName[f] || "", cap: fr.pl[f].cap || 0, mun: fr.pl[f].mun || 0 }; // 回放面板：历史产能/军火（2026-08-21 廿九）
-    eliminated[f] = fr.pl[f].e;
+    const pf = fr.pl[f] || {}; // 畸形回放文件（pl 值为 null）：兜底防渲染中途崩溃（2026-08-30）
+    playerState[f] = { name: seatName[f] || "", cap: pf.cap || 0, mun: pf.mun || 0 }; // 回放面板：历史产能/军火（2026-08-21 廿九）
+    eliminated[f] = !!pf.e;
   }
   // 补全 seats 势力（早期帧可能尚未登场）：避免列表/转移计算访问不到
   for (const s0 of (replayData.seats || [])) {
@@ -6233,6 +6237,7 @@ document.addEventListener("keydown", function(e) {
     const m = document.getElementById(mid);
     if (m && !m.classList.contains("hidden")) return; // 弹窗打开时不响应
   }
+  if (replayMode) return; // 读史回放：屏蔽回合推进/建造快捷键，防止空格与数字键污染回放状态（Esc 关弹窗已在上方处理，2026-08-30）
   if (e.key === " ") {
     e.preventDefault();
     turnClick(); // 空格 = 下一回合/阶段
@@ -6412,7 +6417,12 @@ function on3DWheel(e) {
 
 function init3D() {
   if (scene3D) return; // 已初始化（防止重复调用）
-  if (!grayImg.complete) { setTimeout(init3D, 50); return; } // 底图未加载完：稍后重试
+  if (!grayImg.complete) {
+    // 底图未加载完：稍后重试；封顶 100 次（≈5 秒）——资源缺失（如 html 被单独分发）时回退 2D，不再无限轮询（2026-08-30）
+    if (++init3D._tries > 100) { MODE_3D = false; showToast("立体模式资源加载失败，已回退 2D 模式"); return; }
+    setTimeout(init3D, 50); return;
+  }
+  init3D._tries = 0;
   // ---- 高度 + 海陆（高度数据为灰度字节数组，非图片；源自 assets/高度图.png，2100×1400 与 W×H 对齐，2026-08-21 廿九）----
   const hd = HEIGHT_GRAY;
   // 2026-08-21 廿九修：海陆判定改用 buildSeaPixel()（DATA 海洋地块 runs，与 2D 一致）——原读 grayImg 蓝色 (68,107,163)，
@@ -9959,10 +9969,7 @@ function toggleRiver(a, b) {
 // 导出河流：把编辑好的跨河对下载为 JSON（2026-08-21 廿九：编辑器画完保存）
 function exportRivers() {
   const blob = new Blob([JSON.stringify(RIVER_PAIRS, null, 2)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "河流.json";
-  a.click();
+  downloadBlob(blob, "河流.json"); // 原实现漏了 revokeObjectURL（blob URL 泄漏），统一走 downloadBlob（2026-08-30）
   showToast("河流已导出（" + RIVER_PAIRS.length + " 对）");
 }
 // 地块几何中心（质心，按 runs 像素面积加权）——箭头端点用，比手标 center 准
@@ -10255,7 +10262,7 @@ function showLoading() {
 function showMap(){
   showLoading(); // 空白屏 + 进度条，趁机预加载 emoji 位图
   if (centralPlains) applyCentralPlainsPorts(); // 无海战模式：空操作（港口保留作补给锚点 + 港口跨海通道；造船已由 canRecruit 禁止）
-  if (MODE_3D) init3D(); // 立体模式：加载阶段构建 3D 场景
+  try { if (MODE_3D) init3D(); } catch (e) { console.error("3D初始化失败:", e); MODE_3D = false; showToast("立体模式初始化失败，已回退 2D"); } // WebGL 不可用等异常：回退 2D，不让开局卡死（2026-08-30）
   document.getElementById("pick").classList.add("hidden");
   document.getElementById("map-page").classList.remove("hidden");
   document.getElementById("turn-box").classList.remove("hidden");
@@ -10749,11 +10756,7 @@ function exportScenario() {
     provinces: edData.provinces, armies: edData.armies
   };
   const blob = new Blob([JSON.stringify(stp, null, 2)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = stp.name + ".json";
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadBlob(blob, stp.name + ".json");
 }
 function importScenarioFile(input) {
   const f = input.files[0];
