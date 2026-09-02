@@ -4143,7 +4143,12 @@ function applyLoadedSave(d) {
     for (const k in provState) {
       const st = provState[k];
       if (st && st.units && st.units.length) {
-        st.units.forEach(function(u) { if (!u.uid) u.uid = unitUid++; if (u.owner === undefined) u.owner = st.owner || null; }); // 兜底补 uid/owner（旧存档单位无 owner：海域归属判定用）
+        st.units.forEach(function(u) {
+          // 存档 uid 规整为正整数：uid 会拼进 '.unit[data-uid="..."]' 选择器，怪异字符串（引号/方括号）会让 querySelector 抛 SyntaxError 崩掉战斗/动画回调（2026-08-30）
+          const _n = parseInt(u.uid);
+          if (_n > 0) { u.uid = _n; if (_n >= unitUid) unitUid = _n + 1; } else u.uid = unitUid++;
+          if (u.owner === undefined) u.owner = st.owner || null; // 兜底补 owner（旧存档单位无 owner：海域归属判定用）
+        });
         try { formCircleNow(parseInt(k)); } catch (e) {}
       }
     }
@@ -4631,7 +4636,11 @@ function _unitSpec(spec) {
   const out = [];
   for (const part of String(spec).split(/、/)) {
     const m = part.match(/^(.+?)(?:×(\d+)|(\d+))$/);
-    if (m) out.push({ name: m[1], n: parseInt(m[2] || m[3] || 1) });
+    if (m) {
+      // 数量钳制 1-999：解析文件不可信，"步兵×1e9" 会在 _addUnits 循环 push 十亿次卡死页面（2026-08-30）
+      const _n = parseInt(m[2] || m[3] || 1);
+      out.push({ name: m[1], n: Math.max(1, Math.min(999, _n > 0 ? _n : 1)) });
+    }
   }
   return out;
 }
@@ -5127,7 +5136,7 @@ function showGameOver(w, mode, final) {
   let html = "";
   for (let i = 0; i < list.length; i++) {
     const L = list[i];
-    html += "<div" + (i === 0 ? " class='r1'" : "") + ">" + (i + 1) + ". " + displayName(L.f) + (L.f !== displayName(L.f) ? "（" + L.f + "）" : "") + "　工厂 " + L.factories + "　军力 " + L.power + (L.alive ? "　🎉" : "　💀 灭亡") + "</div>";
+    html += "<div" + (i === 0 ? " class='r1'" : "") + ">" + (i + 1) + ". " + esc(displayName(L.f)) + (L.f !== displayName(L.f) ? "（" + esc(L.f) + "）" : "") + "　工厂 " + L.factories + "　军力 " + L.power + (L.alive ? "　🎉" : "　💀 灭亡") + "</div>"; // 势力键来自存档：转义防 XSS（2026-08-30）
   }
   rankEl.innerHTML = html;
   document.getElementById("go-title").textContent = mode === "humandeath" ? "☠ 所有人类玩家已灭亡" : "🏆 " + displayName(w) + " 统一天下！";
@@ -5612,7 +5621,7 @@ function showProvinceInfo(province) { if (replayMode) return; // 读史：点击
     detail += "<div class='pg' style='flex:1 1 calc(50% - 4px)'><span class='pg-lb'>基建</span><span class='pg-v'>" + (province.infra || 0) + " 级</span></div>";
   }
   var owner = "中立";
-  if (st.owner) owner = displayName(st.owner); // 归属直接显示势力名
+  if (st.owner) owner = esc(displayName(st.owner)); // 归属直接显示势力名（读档后 owner 是存档可控字符串：必须转义防 XSS，2026-08-30）
   detail += "<div class='pg' style='flex:1 1 calc(50% - 4px)'><span class='pg-lb'>归属</span><span class='pg-v'>" + owner + "</span></div>";
   if (!isSeaPanel) {
     detail += "<div class='pg' style='flex:1 1 calc(50% - 4px)'><span class='pg-lb'>资源</span><span class='pg-v'><span id='info-tr-inline'>" + treasuryInline(st) + "</span></span></div>";
