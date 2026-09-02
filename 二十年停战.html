@@ -4636,7 +4636,11 @@ function _unitSpec(spec) {
   const out = [];
   for (const part of String(spec).split(/、/)) {
     const m = part.match(/^(.+?)(?:×(\d+)|(\d+))$/);
-    if (m) out.push({ name: m[1], n: parseInt(m[2] || m[3] || 1) });
+    if (m) {
+      // 数量钳制 1-999：解析文件不可信，"步兵×1e9" 会在 _addUnits 循环 push 十亿次卡死页面（2026-08-30）
+      const _n = parseInt(m[2] || m[3] || 1);
+      out.push({ name: m[1], n: Math.max(1, Math.min(999, _n > 0 ? _n : 1)) });
+    }
   }
   return out;
 }
