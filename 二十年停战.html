@@ -4143,7 +4143,12 @@ function applyLoadedSave(d) {
     for (const k in provState) {
       const st = provState[k];
       if (st && st.units && st.units.length) {
-        st.units.forEach(function(u) { if (!u.uid) u.uid = unitUid++; if (u.owner === undefined) u.owner = st.owner || null; }); // 兜底补 uid/owner（旧存档单位无 owner：海域归属判定用）
+        st.units.forEach(function(u) {
+          // 存档 uid 规整为正整数：uid 会拼进 '.unit[data-uid="..."]' 选择器，怪异字符串（引号/方括号）会让 querySelector 抛 SyntaxError 崩掉战斗/动画回调（2026-08-30）
+          const _n = parseInt(u.uid);
+          if (_n > 0) { u.uid = _n; if (_n >= unitUid) unitUid = _n + 1; } else u.uid = unitUid++;
+          if (u.owner === undefined) u.owner = st.owner || null; // 兜底补 owner（旧存档单位无 owner：海域归属判定用）
+        });
         try { formCircleNow(parseInt(k)); } catch (e) {}
       }
     }
